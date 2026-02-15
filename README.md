@@ -1,6 +1,7 @@
 # **WinHTML Editor - 构建指南 (Build Guide)**
 
 本指南将帮助您在本地环境从源码编译并构建 **WinHTML Editor**。本项目采用 **React (Frontend)** + **Go (Backend)** 的架构，最终打包为单文件的 Windows 可执行程序 (.exe)。
+**事先声明：本人纯小白，大量代码来源于AI（aistudio.google），请喷轻点。**
 
 ## **📋 环境准备 (Prerequisites)**
 
