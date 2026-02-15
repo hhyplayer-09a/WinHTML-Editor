@@ -1491,6 +1491,38 @@ ${customStyles}</style></head>
            // 3. Convert HTML to Markdown
            const turndownService = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced', emDelimiter: '_', strongDelimiter: '**' });
            turndownService.use(gfm);
+
+           // FIX: Custom Rule for Ordered Lists to prevent "NaN."
+           // Tiptap/Browsers might return index attributes or structure that Turndown misinterprets defaultly
+           turndownService.addRule('orderedListItem', {
+             filter: function (node) {
+               return node.nodeName === 'LI' && node.parentNode && node.parentNode.nodeName === 'OL';
+             },
+             replacement: function (content, node) {
+               const parent = node.parentNode as HTMLElement;
+               let index = -1;
+               // Robust index finding
+               for (let i = 0; i < parent.children.length; i++) {
+                 if (parent.children[i] === node) {
+                   index = i;
+                   break;
+                 }
+               }
+               
+               const startAttr = parent.getAttribute('start');
+               const start = startAttr ? parseInt(startAttr, 10) : 1;
+               const safeStart = isNaN(start) ? 1 : start;
+               const num = safeStart + (index !== -1 ? index : 0);
+
+               content = content
+                 .replace(/^\n+/, '') // remove leading newlines
+                 .replace(/\n+$/, '\n') // replace trailing newlines with just one
+                 .replace(/\n/gm, '\n    '); // indent
+               
+               return num + '. ' + content + (node.nextSibling && !/\n$/.test(content) ? '\n' : '');
+             }
+           });
+
            turndownService.addRule('gfm-table-manual', {
              filter: 'table',
              replacement: function (content, node) {
