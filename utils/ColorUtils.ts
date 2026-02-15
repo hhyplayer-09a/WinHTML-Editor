@@ -1,3 +1,5 @@
+
+
 // Utilities for color manipulation and contrast calculation
 // Based on W3C accessibility guidelines and simplified APCA concepts
 
@@ -185,5 +187,108 @@ export class ColorUtils {
     return css.replace(colorRegex, (match) => {
       return this.adaptForDarkMode(match);
     });
+  }
+
+  /**
+   * Process HTML string to adapt inline styles for dark mode compatibility.
+   * Strategy: "Transparent Stacking"
+   * - Any element with a light background is made transparent.
+   * - This allows the dark body background to show through.
+   * - Borders are enforced to ensure boundaries are visible.
+   * - Text is lightened.
+   */
+  static adaptHtmlToTheme(html: string, isDarkMode: boolean): string {
+    if (!isDarkMode) return html;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    const darkBg = '#2e2e2e';
+    const darkBorder = '#555555'; // Slightly lighter border for visibility
+    const darkHeaderBg = '#333333';
+
+    // Helper: is a color dark? (Luminance < 0.5)
+    const isDark = (c: [number, number, number]) => this.getLuminance(c[0], c[1], c[2]) < 0.5;
+    
+    const all = doc.querySelectorAll('*');
+    all.forEach(el => {
+        const element = el as HTMLElement;
+        const s = element.style;
+
+        // 1. Handle Background Colors (The "Transparent" Strategy)
+        if (s.backgroundColor) {
+             const parsed = this.parseColor(s.backgroundColor);
+             if (parsed) {
+                 // Check if it is a light color (Luminance > 0.4)
+                 // We treat ANY light background as a candidate for transparency in dark mode
+                 if (this.getLuminance(parsed[0], parsed[1], parsed[2]) > 0.4) {
+                     s.backgroundColor = 'transparent';
+                     
+                     // If we make it transparent, we MUST ensure there is a border to define the shape
+                     // especially for textboxes, tables, and blockquotes
+                     const tag = element.tagName.toLowerCase();
+                     const isBox = element.classList.contains('winhtml-textbox') || 
+                                   tag === 'table' || tag === 'th' || tag === 'td' || 
+                                   tag === 'blockquote' || tag === 'pre';
+
+                     if (isBox) {
+                         if (!s.borderColor || s.borderColor === 'transparent' || s.borderWidth === '0px') {
+                             s.borderColor = darkBorder;
+                             if (!s.borderWidth) s.borderWidth = '1px';
+                             if (!s.borderStyle) s.borderStyle = 'solid';
+                         }
+                     }
+                 }
+             }
+        }
+
+        // 2. Enforce specific overrides for TextBoxes
+        if (element.classList.contains('winhtml-textbox')) {
+            s.backgroundColor = 'transparent';
+            s.borderColor = darkBorder;
+            s.color = '#e0e0e0';
+            // Ensure border is visible
+            if (!s.borderWidth || s.borderWidth === '0px') {
+                 s.borderWidth = '1px';
+                 s.borderStyle = 'solid';
+            }
+        }
+
+        // 3. Handle Text Color
+        if (s.color) {
+            const parsed = this.parseColor(s.color);
+            if (parsed && isDark(parsed)) {
+                // If text is dark (e.g. black), make it light gray
+                s.color = this.adaptForDarkMode(s.color, darkBg);
+            }
+        }
+        
+        // 4. Handle Border Color
+        if (s.borderColor) {
+             const parsed = this.parseColor(s.borderColor);
+             // If border is dark, lighten it so it's visible on dark bg
+             if (parsed && isDark(parsed)) {
+                 s.borderColor = darkBorder;
+             }
+        }
+    });
+
+    // 5. Fix Tables specific issues (Tiptap tables often rely on CSS classes)
+    const cells = doc.querySelectorAll('td, th');
+    cells.forEach(c => {
+        const cell = c as HTMLElement;
+        // Ensure borders are visible in dark mode
+        if (!cell.style.borderColor) {
+            cell.style.borderColor = darkBorder;
+        }
+
+        if (cell.tagName === 'TH') {
+            // Headers can have a slight tint, or just be transparent with bold text
+            cell.style.backgroundColor = '#333333'; // Opaque header usually looks better than transparent
+            cell.style.color = '#ffffff';
+        }
+    });
+
+    return doc.body.innerHTML;
   }
 }

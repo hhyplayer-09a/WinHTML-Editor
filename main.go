@@ -68,13 +68,15 @@ var (
 )
 
 const (
-	WM_DESTROY   = 0x0002
-	WM_COMMAND   = 0x0111
-	WM_USER      = 0x0400
-	WM_TRAY      = WM_USER + 1
-	WM_LBUTTONUP = 0x0202
-	WM_RBUTTONUP = 0x0205
-	WM_NULL      = 0x0000
+	WM_DESTROY       = 0x0002
+	WM_COMMAND       = 0x0111
+	WM_USER          = 0x0400
+	WM_TRAY          = WM_USER + 1
+	WM_LBUTTONUP     = 0x0202
+	WM_LBUTTONDBLCLK = 0x0203
+	WM_RBUTTONUP     = 0x0205
+	WM_RBUTTONDBLCLK = 0x0206
+	WM_NULL          = 0x0000
 
 	NIM_ADD    = 0x00000000
 	NIM_MODIFY = 0x00000001
@@ -280,6 +282,9 @@ func getNativeSaveDialog(filterType string) (string, error) {
 	if filterType == "pdf" {
 		filter = "PDF Files (*.pdf)\x00*.pdf\x00\x00"
 		defExt = "pdf"
+	} else if filterType == "md" {
+		filter = "Markdown Files (*.md)\x00*.md\x00\x00"
+		defExt = "md"
 	} else {
 		filter = "HTML Files (*.html)\x00*.html\x00\x00"
 		defExt = "html"
@@ -809,29 +814,47 @@ func main() {
 			assets := r.MultipartForm.File["assets"]
 			hasAssets := len(assets) > 0
 
-			shouldBundle := false
-			if hasAssets {
-				if !strings.EqualFold(parentDirName, inputNameNoExt) {
-					shouldBundle = true
-				}
-			}
-
-			if shouldBundle {
-				finalDir = filepath.Join(inputDir, inputNameNoExt)
-				if err := os.MkdirAll(finalDir, 0755); err != nil {
-					http.Error(w, "Failed to create directory", http.StatusInternalServerError)
-					return
-				}
-				finalHtmlPath = filepath.Join(finalDir, inputName)
-			} else {
-				finalDir = inputDir
+			// --- SMART SAVING STRATEGY ---
+			// 1. Markdown Files: Always use a sidecar folder (Filename_assets)
+			// 2. HTML Files: Use bundling (Filename dir) only if instructed or consistent with current struct
+			
+			if strings.ToLower(inputExt) == ".md" || strings.ToLower(inputExt) == ".markdown" {
+				// Markdown Strategy: Sidecar assets folder
 				finalHtmlPath = inputPath
+				finalDir = filepath.Join(inputDir, inputNameNoExt+"_assets")
+				
+				if hasAssets {
+					if err := os.MkdirAll(finalDir, 0755); err != nil {
+						http.Error(w, "Failed to create assets directory", http.StatusInternalServerError)
+						return
+					}
+				}
+			} else {
+				// HTML Strategy
+				shouldBundle := false
+				if hasAssets {
+					if !strings.EqualFold(parentDirName, inputNameNoExt) {
+						shouldBundle = true
+					}
+				}
+
+				if shouldBundle {
+					finalDir = filepath.Join(inputDir, inputNameNoExt)
+					if err := os.MkdirAll(finalDir, 0755); err != nil {
+						http.Error(w, "Failed to create directory", http.StatusInternalServerError)
+						return
+					}
+					finalHtmlPath = filepath.Join(finalDir, inputName)
+				} else {
+					finalDir = inputDir
+					finalHtmlPath = inputPath
+				}
 			}
 
-			// Save HTML File
+			// Save HTML/Content File
 			htmlFile, _, err := r.FormFile("html")
 			if err != nil {
-				http.Error(w, "HTML file part missing", http.StatusBadRequest)
+				http.Error(w, "Content file part missing", http.StatusBadRequest)
 				return
 			}
 			defer htmlFile.Close()
@@ -872,6 +895,7 @@ func main() {
 						continue
 					}
 					
+					// Save asset to finalDir (either _assets folder or bundled folder)
 					assetPath := filepath.Join(finalDir, fileHeader.Filename)
 					dst, err := os.Create(assetPath)
 					if err == nil {
@@ -915,6 +939,10 @@ func main() {
 // --- Tray Application Logic ---
 
 func runTrayApp(url string) {
+	// FIX: Lock OS Thread to ensure message loop affinity and prevent handle leaks in the callback
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	if runtime.GOOS != "windows" {
 		// Fallback for non-windows (dev mode)
 		select {}
@@ -960,9 +988,9 @@ func runTrayApp(url string) {
 		switch msg {
 		case WM_TRAY:
 			switch lparam {
-			case WM_LBUTTONUP:
+			case WM_LBUTTONUP, WM_LBUTTONDBLCLK:
 				openDefaultBrowser(url)
-			case WM_RBUTTONUP:
+			case WM_RBUTTONUP, WM_RBUTTONDBLCLK:
 				// FIX: Menu Reliability Logic
 				// 1. SetForegroundWindow (Must be called BEFORE TrackPopupMenu)
 				// 2. TrackPopupMenu
@@ -975,7 +1003,12 @@ func runTrayApp(url string) {
 				procSetForegroundWindow.Call(uintptr(h))
 
 				hMenu, _, _ := procCreatePopupMenu.Call()
-				
+				if hMenu == 0 {
+					return 0
+				}
+				// FIX: Ensure menu is destroyed even if panic occurs or early return
+				defer procDestroyMenu.Call(hMenu)
+
 				openStr, _ := syscall.UTF16PtrFromString("Open Editor")
 				procAppendMenuW.Call(hMenu, MF_STRING, 1, uintptr(unsafe.Pointer(openStr)))
 				
@@ -989,8 +1022,6 @@ func runTrayApp(url string) {
 				
 				// Essential hack for menu to close properly when clicking outside (KB135788)
 				procPostMessage.Call(uintptr(h), WM_NULL, 0, 0)
-
-				procDestroyMenu.Call(hMenu)
 
 				if res == 1 {
 					openDefaultBrowser(url)

@@ -1,4 +1,5 @@
 
+
 import { 
   Document, 
   Packer, 
@@ -17,9 +18,12 @@ import {
   ExternalHyperlink,
   CommentRangeStart,
   CommentRangeEnd,
-  CommentReference
+  CommentReference,
+  XmlComponent,
+  TableLayoutType
 } from 'docx';
 import { Editor } from '@tiptap/react';
+import { latexToDocxMath } from './mathConversion';
 
 // --- Type Definitions for Tiptap Nodes ---
 interface TiptapAttributes {
@@ -309,10 +313,12 @@ const processNodes = async (nodes: TiptapNode[], context: ExportContext = {}): P
                     cellShading = { fill: "F3F4F6", type: ShadingType.CLEAR, color: "auto" };
                 }
 
+                // Strategy B: AutoFit to Window + Content
+                // We remove explicit widths from cells to allow Word's AutoFit engine to distribute columns based on content.
                 return new TableCell({
                   children: cellChildren,
                   shading: cellShading,
-                  width: { size: 100, type: WidthType.PERCENTAGE }, // Auto width
+                  // width: { size: 100, type: WidthType.PERCENTAGE }, // REMOVED to enable AutoFit
                 });
              }));
              return new TableRow({ children: cells });
@@ -320,7 +326,8 @@ const processNodes = async (nodes: TiptapNode[], context: ExportContext = {}): P
 
           children.push(new Table({
              rows: rows,
-             width: { size: 100, type: WidthType.PERCENTAGE },
+             width: { size: 100, type: WidthType.PERCENTAGE }, // Keep table 100% width relative to page
+             layout: TableLayoutType.AUTOFIT, // Enable AutoFit layout algorithm
              borders: {
                top: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
                bottom: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
@@ -338,6 +345,7 @@ const processNodes = async (nodes: TiptapNode[], context: ExportContext = {}): P
 
       case 'textBox': {
         // Convert custom Text Box into a 1-row, 1-cell Table for DOCX compatibility
+        // For TextBoxes, we usually want them to span the full width available, so we keep fixed 100% width here.
         if (node.content) {
            const cellChildren = await processNodes(node.content, context);
            
@@ -432,8 +440,8 @@ const processNodes = async (nodes: TiptapNode[], context: ExportContext = {}): P
 
 // --- Inline Node Processor ---
 // Converts Tiptap text/marks to docx TextRuns or Hyperlinks
-const processInlineNodes = async (nodes: TiptapNode[], context: ExportContext): Promise<(TextRun | ImageRun | ExternalHyperlink | CommentRangeStart | CommentRangeEnd | CommentReference)[]> => {
-  const runs: (TextRun | ImageRun | ExternalHyperlink | CommentRangeStart | CommentRangeEnd | CommentReference)[] = [];
+const processInlineNodes = async (nodes: TiptapNode[], context: ExportContext): Promise<(TextRun | ImageRun | ExternalHyperlink | CommentRangeStart | CommentRangeEnd | CommentReference | XmlComponent)[]> => {
+  const runs: (TextRun | ImageRun | ExternalHyperlink | CommentRangeStart | CommentRangeEnd | CommentReference | XmlComponent)[] = [];
   
   // Track active comment to merge contiguous text runs with the same comment
   let activeCommentId: number | null = null;
@@ -537,13 +545,21 @@ const processInlineNodes = async (nodes: TiptapNode[], context: ExportContext): 
        }
     } 
     else if (node.type === 'math') {
-       // Handle Math as LaTeX text for now
-       runs.push(new TextRun({
-         text: ` ${node.attrs?.latex || ''} `,
-         italics: true,
-         color: "3B82F6", 
-         font: "Courier New"
-       }));
+       // Convert LaTeX to Native Office Math (OMML)
+       const latex = node.attrs?.latex || '';
+       const ommlComponent = latexToDocxMath(latex);
+
+       if (ommlComponent) {
+          runs.push(ommlComponent);
+       } else {
+          // Fallback if conversion fails
+          runs.push(new TextRun({
+             text: ` ${latex} `,
+             italics: true,
+             color: "3B82F6", 
+             font: "Courier New"
+          }));
+       }
     }
     // Hard break
     else if (node.type === 'hardBreak') {

@@ -138,8 +138,10 @@ export const inlineImagesForExport = async (html: string): Promise<string> => {
  * Generates a numbered filename (image_N.ext) to prevent duplicates.
  * Replaces src with relative path.
  * Returns new HTML, list of assets (as Blobs), and a map of blob->filename for editor update.
+ * 
+ * @param assetPrefix Optional prefix for image src (e.g., './assets')
  */
-export const prepareHtmlForSave = async (htmlContent: string, docName: string): Promise<PreparedDoc> => {
+export const prepareHtmlForSave = async (htmlContent: string, docName: string, assetPrefix: string = ''): Promise<PreparedDoc> => {
   const parser = new DOMParser();
   const doc = parser.parseFromString(htmlContent, 'text/html');
   const images = doc.querySelectorAll('img');
@@ -233,8 +235,9 @@ export const prepareHtmlForSave = async (htmlContent: string, docName: string): 
           data: blob
         });
 
-        // Update HTML to relative path
-        img.setAttribute('src', `./${fileName}`);
+        // Update HTML to relative path using optional prefix
+        const relPath = assetPrefix ? `${assetPrefix}/${fileName}` : `./${fileName}`;
+        img.setAttribute('src', relPath);
         img.setAttribute('data-original-src', fileName);
         
       } catch (e) {

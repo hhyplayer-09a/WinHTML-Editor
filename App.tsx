@@ -1,3 +1,5 @@
+
+
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useEditor, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -1135,8 +1137,9 @@ export default function App() {
       .ProseMirror code { color: #f28b82 !important; background-color: rgba(255,255,255, 0.08) !important; }
       .ProseMirror .annotation-mark { background-color: transparent !important; border-bottom: 2px solid #fdd835 !important; color: inherit !important; }
       .ProseMirror .winhtml-textbox { 
-        background-color: #333 !important; 
+        background-color: transparent !important; 
         border-color: #555 !important; 
+        color: #e0e0e0 !important;
       }
       .ProseMirror h1, .ProseMirror h2, .ProseMirror h3, 
       .ProseMirror h4, .ProseMirror h5, .ProseMirror h6,
@@ -1159,7 +1162,7 @@ export default function App() {
         color: #f3f3f3 !important;
       }
       .ProseMirror .docx-textbox {
-        background-color: #333333 !important; 
+        background-color: transparent !important; 
         border: 1px solid #555555 !important; 
         color: #e0e0e0 !important;            
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important; 
@@ -1305,6 +1308,11 @@ ${customStyles}</style></head>
             // 1. Prepare HTML with inlined images (convert blob: to data:base64)
             const currentHtml = editor.getHTML();
             let inlinedBody = await inlineImagesForExport(currentHtml);
+
+            // NEW: Process HTML for Dark Mode colors before export
+            if (isDarkMode) {
+                inlinedBody = ColorUtils.adaptHtmlToTheme(inlinedBody, true);
+            }
 
             // MOBILE SCALING: Adjust text size only (keep borders/layout widths fixed)
             if (isMobile) {
@@ -1457,37 +1465,88 @@ ${customStyles}</style></head>
             setIsProcessing(false);
         }
     } else if (type === 'md') {
-       const turndownService = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced', emDelimiter: '_', strongDelimiter: '**' });
-       turndownService.use(gfm);
-       turndownService.addRule('gfm-table-manual', {
-         filter: 'table',
-         replacement: function (content, node) {
-           const element = node as HTMLElement;
-           const rows = Array.from(element.querySelectorAll('tr'));
-           if (rows.length === 0) return '';
-           let markdownTable = '\n\n';
-           rows.forEach((row, rowIndex) => {
-             const tr = row as HTMLElement;
-             const cells = Array.from(tr.querySelectorAll('td, th'));
-             const cellContents = cells.map(cell => cell.textContent?.trim().replace(/\n/g, '<br>') || ' ');
-             markdownTable += '| ' + cellContents.join(' | ') + ' |\n';
-             if (rowIndex === 0) markdownTable += '| ' + cellContents.map(() => '---').join(' | ') + ' |\n';
+       // New MD Logic: Use native save dialog and sidecar assets folder
+       setIsProcessing(true);
+       try {
+           // 1. Open Save Dialog for .md file
+           const saveRes = await fetch('/api/dialog/save?filter=md');
+           if (!saveRes.ok) throw new Error("Failed to open save dialog");
+           const { path } = await saveRes.json();
+           if (!path) {
+               setIsProcessing(false);
+               return; // User cancelled
+           }
+
+           // 2. Prepare Assets and HTML with Relative Paths
+           // If user selected "C:/Docs/Note.md", we want images in "Note_assets" folder relative to it.
+           // So image path in MD should be "./Note_assets/image_X.png"
+           const filename = path.split(/[/\\]/).pop();
+           const filenameNoExt = filename.replace(/\.[^/.]+$/, "");
+           const assetsFolderName = `${filenameNoExt}_assets`;
+
+           const currentHtml = editor.getHTML();
+           // Pass the relative folder prefix to image util
+           const { html, assets } = await prepareHtmlForSave(currentHtml, filename, `./${assetsFolderName}`);
+
+           // 3. Convert HTML to Markdown
+           const turndownService = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced', emDelimiter: '_', strongDelimiter: '**' });
+           turndownService.use(gfm);
+           turndownService.addRule('gfm-table-manual', {
+             filter: 'table',
+             replacement: function (content, node) {
+               const element = node as HTMLElement;
+               const rows = Array.from(element.querySelectorAll('tr'));
+               if (rows.length === 0) return '';
+               let markdownTable = '\n\n';
+               rows.forEach((row, rowIndex) => {
+                 const tr = row as HTMLElement;
+                 const cells = Array.from(tr.querySelectorAll('td, th'));
+                 const cellContents = cells.map(cell => cell.textContent?.trim().replace(/\n/g, '<br>') || ' ');
+                 markdownTable += '| ' + cellContents.join(' | ') + ' |\n';
+                 if (rowIndex === 0) markdownTable += '| ' + cellContents.map(() => '---').join(' | ') + ' |\n';
+               });
+               return markdownTable + '\n';
+             }
            });
-           return markdownTable + '\n';
-         }
-       });
-       turndownService.addRule('math', { 
-           filter: (n: any) => n.nodeName === 'SPAN' && (n.getAttribute('data-type') === 'math' || n.hasAttribute('data-latex')), 
-           replacement: (c, n: any) => `$${n.getAttribute('data-latex') || ''}$` 
-       });
-       turndownService.addRule('comment', { filter: (n: any) => n.nodeName === 'SPAN' && n.hasAttribute('data-comment'), replacement: (c, n: any) => `[${c}](comment: ${n.getAttribute('data-comment')})` });
-       const markdown = turndownService.turndown(editor.getHTML());
-       const blob = new Blob([markdown], { type: 'text/markdown' });
-       const link = document.createElement('a');
-       link.href = URL.createObjectURL(blob);
-       link.download = `${baseName}.md`;
-       link.click();
-       URL.revokeObjectURL(link.href);
+           turndownService.addRule('math', { 
+               filter: (n: any) => n.nodeName === 'SPAN' && (n.getAttribute('data-type') === 'math' || n.hasAttribute('data-latex')), 
+               replacement: (c, n: any) => `$${n.getAttribute('data-latex') || ''}$` 
+           });
+           turndownService.addRule('comment', { filter: (n: any) => n.nodeName === 'SPAN' && n.hasAttribute('data-comment'), replacement: (c, n: any) => `[${c}](comment: ${n.getAttribute('data-comment')})` });
+           
+           const markdown = turndownService.turndown(html);
+
+           // 4. Send to Backend
+           const formData = new FormData();
+           formData.append('filePath', path);
+           
+           // Append Markdown content as the main file
+           const mdBlob = new Blob([markdown], { type: 'text/markdown' });
+           formData.append('html', mdBlob, filename); 
+           
+           // Append extracted assets
+           assets.forEach(asset => {
+             formData.append('assets', asset.data, asset.fileName);
+           });
+
+           const response = await fetch('/api/save-file', {
+             method: 'POST',
+             body: formData
+           });
+
+           if (!response.ok) {
+               const errText = await response.text();
+               throw new Error(errText || "Backend save failed");
+           }
+           
+           showToast("Exported to Markdown", 'success');
+
+       } catch (e) {
+           console.error("Markdown Export Failed", e);
+           showToast(`Export failed: ${(e as Error).message}`, 'error');
+       } finally {
+           setIsProcessing(false);
+       }
     }
   }, [editor, fileName, customStyles, activeStyles, isDarkMode]);
 
