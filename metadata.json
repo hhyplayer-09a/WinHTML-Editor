@@ -1,0 +1,5 @@
+{
+  "name": "WinHTML Editor",
+  "description": "A Windows-native style HTML editor with direct file loading, rich text editing, and clean export functionality.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WinHTML Editor</title>
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Local Tailwind Script -->
+    <script src="/libs/tailwindcss.js"></script>
+    
+    <!-- Local KaTeX CSS for Math Rendering -->
+    <link rel="stylesheet" href="/libs/katex.min.css">
+    
+    <!-- Local Export Libraries -->
+    <!-- Mammoth.js for stable DOCX Import -->
+    <script src="/libs/mammoth.browser.min.js"></script>
+
+    <style>
+      /* Simulate Windows System Fonts */
+      body {
+        font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+        background-color: #f3f3f3; /* Windows 11 Light Background */
+        overflow: hidden; /* App-like feel */
+      }
+      
+      /* Custom Scrollbar for Editor */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #ccc;
+        border-radius: 5px;
+        border: 2px solid #f3f3f3;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #aaa;
+      }
+
+      /* Tiptap Editor Styles - Clean Slate */
+      .ProseMirror {
+        outline: none;
+        min-height: 100%;
+        font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+      }
+      
+      .ProseMirror ul, .ProseMirror ol {
+        padding-left: 1.5rem;
+      }
+
+      .ProseMirror ul {
+        list-style-type: disc;
+      }
+
+      .ProseMirror ol {
+        list-style-type: decimal;
+      }
+
+      /* --- Distinct Heading Styles (Override Tailwind Reset) --- */
+      .ProseMirror h1 {
+        font-size: 2.25em; /* 36px */
+        line-height: 1.2;
+        font-weight: 700;
+        margin-top: 0.5em;
+        margin-bottom: 0.5em;
+      }
+      .ProseMirror h2 {
+        font-size: 1.75em; /* 28px */
+        line-height: 1.3;
+        font-weight: 700;
+        margin-top: 0.5em;
+        margin-bottom: 0.5em;
+        border-bottom: 1px solid #e5e7eb; /* Light separator for H2 */
+        padding-bottom: 0.2em;
+      }
+      .ProseMirror h3 {
+        font-size: 1.5em; /* 24px */
+        line-height: 1.4;
+        font-weight: 600;
+        margin-top: 0.5em;
+        margin-bottom: 0.5em;
+      }
+      .ProseMirror h4 {
+        font-size: 1.25em; /* 20px */
+        line-height: 1.5;
+        font-weight: 600;
+        margin-top: 0.5em;
+        margin-bottom: 0.5em;
+      }
+      .ProseMirror h5 {
+        font-size: 1.125em; /* 18px */
+        font-weight: 600;
+        margin-top: 0.5em;
+        margin-bottom: 0.5em;
+      }
+      .ProseMirror h6 {
+        font-size: 1em; /* 16px */
+        font-weight: 600;
+        text-transform: uppercase;
+        color: #6b7280;
+        margin-top: 0.5em;
+        margin-bottom: 0.5em;
+      }
+      
+      /* --- Code Block & Inline Code Styling --- */
+      .ProseMirror pre {
+        background-color: #f6f8fa; /* Light background (GitHub style) */
+        color: #24292e; /* Dark text */
+        border: 1px solid #e1e4e8;
+        font-family: 'JetBrains Mono', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        margin: 1rem 0;
+        overflow-x: auto;
+        line-height: 1.5;
+      }
+      
+      .ProseMirror code {
+        font-family: 'JetBrains Mono', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        background-color: rgba(135, 131, 120, 0.15);
+        color: #eb5757; /* Reddish for inline code usually pops well */
+        border-radius: 0.25rem;
+        padding: 0.1em 0.3em;
+        font-size: 0.875em;
+      }
+
+      /* Code inside pre blocks should inherit pre styles, not inline styles */
+      .ProseMirror pre code {
+        background-color: transparent;
+        color: inherit;
+        padding: 0;
+        border-radius: 0;
+        font-size: inherit;
+      }
+      
+      /* --- Table Styling (Simulate Browser Defaults) --- */
+      .ProseMirror table {
+        border-collapse: collapse;
+        table-layout: fixed;
+        width: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      .ProseMirror td,
+      .ProseMirror th {
+        min-width: 1em;
+        border: 1px solid #ced4da; /* Default visible border for editing */
+        padding: 3px 5px;
+        vertical-align: top;
+        box-sizing: border-box;
+        position: relative;
+      }
+
+      .ProseMirror th {
+        font-weight: bold;
+        text-align: left;
+        background-color: #f1f3f5;
+      }
+
+      .ProseMirror .selectedCell:after {
+        z-index: 2;
+        position: absolute;
+        content: "";
+        left: 0; right: 0; top: 0; bottom: 0;
+        background: rgba(200, 200, 255, 0.4);
+        pointer-events: none;
+      }
+
+      .ProseMirror .column-resize-handle {
+        position: absolute;
+        right: -2px;
+        top: 0;
+        bottom: -2px;
+        width: 4px;
+        background-color: #adf;
+        pointer-events: none;
+      }
+
+      /* Annotation / Comment styling */
+      .annotation-mark {
+        background-color: #fef3c7; /* light yellow */
+        border-bottom: 2px solid #fbbf24; /* amber border */
+        cursor: help;
+        transition: background-color 0.2s;
+      }
+      .annotation-mark:hover {
+        background-color: #fde68a;
+      }
+      
+      /* Math Styling */
+      .math-node {
+        display: inline-block;
+        padding: 0 2px;
+        cursor: pointer;
+      }
+      .math-node.ProseMirror-selectednode {
+        background-color: #e3f2fd;
+        border-radius: 4px;
+        outline: 1px solid #2196f3;
+      }
+
+      /* --- TextBox Styling --- */
+      .winhtml-textbox {
+        border-width: 1px;
+        border-style: solid;
+        border-radius: 0.5rem; /* 8px */
+        padding: 1rem;
+        margin: 1rem 0;
+        page-break-inside: avoid;
+      }
+
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "@tiptap/starter-kit": "https://esm.sh/@tiptap/starter-kit@^2.11.2",
+    "@tiptap/react": "https://esm.sh/@tiptap/react@^2.11.2",
+    "@tiptap/extension-underline": "https://esm.sh/@tiptap/extension-underline@^2.11.2",
+    "@tiptap/core": "https://esm.sh/@tiptap/core@^2.11.2",
+    "@tiptap/extension-highlight": "https://esm.sh/@tiptap/extension-highlight@^2.11.2",
+    "@tiptap/extension-text-style": "https://esm.sh/@tiptap/extension-text-style@^2.11.2",
+    "@tiptap/extension-font-family": "https://esm.sh/@tiptap/extension-font-family@^2.11.2",
+    "@tiptap/extension-character-count": "https://esm.sh/@tiptap/extension-character-count@^2.11.2",
+    "@tiptap/extension-color": "https://esm.sh/@tiptap/extension-color@^2.11.2",
+    "@tiptap/extension-table": "https://esm.sh/@tiptap/extension-table@^2.11.2",
+    "@tiptap/extension-table-row": "https://esm.sh/@tiptap/extension-table-row@^2.11.2",
+    "@tiptap/extension-table-cell": "https://esm.sh/@tiptap/extension-table-cell@^2.11.2",
+    "@tiptap/extension-table-header": "https://esm.sh/@tiptap/extension-table-header@^2.11.2",
+    "@tiptap/extension-text-align": "https://esm.sh/@tiptap/extension-text-align@^2.11.2",
+    "@tiptap/extension-subscript": "https://esm.sh/@tiptap/extension-subscript@^2.11.2",
+    "@tiptap/extension-superscript": "https://esm.sh/@tiptap/extension-superscript@^2.11.2",
+    "katex": "https://esm.sh/katex@0.16.9",
+    "marked": "https://esm.sh/marked@12.0.0",
+    "turndown": "https://esm.sh/turndown@7.2.0",
+    "turndown-plugin-gfm": "https://esm.sh/turndown-plugin-gfm@1.0.2",
+    "html-to-image": "https://esm.sh/html-to-image@1.11.11",
+    "docx": "https://esm.sh/docx@8.5.0",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.3",
+    "@tiptap/extension-image": "https://esm.sh/@tiptap/extension-image@^2.11.2"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
