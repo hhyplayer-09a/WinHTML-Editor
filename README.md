@@ -1,13 +1,38 @@
 # **WinHTML Editor - 构建指南 (Build Guide)**
 
 本指南将帮助您在本地环境从源码编译并构建 **WinHTML Editor**。本项目采用 **React (Frontend)** + **Go (Backend)** 的架构，最终打包为单文件的 Windows 可执行程序 (.exe)。
+
 **事先声明：本人纯小白，大量代码来源于AI（aistudio.google），请喷轻点。**
-**使用注意事项：**
+
+# **使用注意事项：**
 1. 打开软件后会在电脑的任务栏出现一个本软件的图标，右键点击后会出现两个选项，第一个是打开一个新的文档，下面那个是退出本程序的后台。
 2. 不要尝试直接用本软件打开图片文件，无法加载。只能通过插入的方式加载图片。
 3. 不要尝试将文字众多或有大量长图的文件导出为png图片，容易卡死。正常的文件导出为图片需要等待一下渲染，属于正常现象。
-4. 软件比较依赖于浏览器，如果你是除edge和chrome以为的浏览器可能部分功能无法使用，将edge或chrome浏览器设置为默认浏览器才能获得最佳体验。
-5. 本软件处于初级阶段，可能存在一些意想不到的bugs。如果你发现bugs或者有什么不错的想法可以告诉我，我随缘更新，随缘修复。
+**4. 软件比较依赖于浏览器，如果你是除edge和chrome以为的浏览器可能部分功能无法使用，将edge或chrome浏览器设置为默认浏览器才能获得最佳体验。**
+**5. 本软件处于初级阶段，可能存在一些意想不到的bugs。如果你发现bugs或者有什么不错的想法可以告诉我，我随缘更新，随缘修复。**
+
+## 请在项目根目录下创建 public/libs 文件夹，然后下载下列文件：
+1. tailwindcss.js
+用途: 用于在浏览器端直接解析 Tailwind CSS 样式。
+下载地址: https://cdn.tailwindcss.com
+保存为: public/libs/tailwindcss.js
+2. katex.min.css
+用途: 数学公式 (LaTeX) 的样式渲染。
+下载地址: https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css
+保存为: public/libs/katex.min.css
+(注意：为了完整显示数学符号，通常还需要下载 KaTeX 发布的 fonts 文件夹并放在 libs 目录下，但在有网络连接的情况下，CSS 中的 CDN 字体引用通常也能工作，或者您可以直接下载 KaTeX 的完整 Release 包)
+3. mammoth.browser.min.js
+用途: 用于将 Word 文档 (.docx) 转换为 HTML。
+下载地址: https://cdn.jsdelivr.net/npm/mammoth@1.7.2/mammoth.browser.min.js
+保存为: public/libs/mammoth.browser.min.js
+4. pdf.js (核心库)
+用途: PDF 文件解析核心逻辑。
+下载地址: https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js
+保存为: public/libs/pdf.js (注意：代码中引用的是 /libs/pdf.js，请重命名下载的文件)
+5. pdf.worker.js (Worker 脚本)
+用途: PDF 解析的后台 Worker，用于处理繁重的解析任务。
+下载地址: https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js
+保存为: public/libs/pdf.worker.js (注意：代码中引用的是 /libs/pdf.worker.js，请重命名下载的文件)
 
 ## **📋 环境准备 (Prerequisites)**
 
