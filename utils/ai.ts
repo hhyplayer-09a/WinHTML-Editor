@@ -1,4 +1,5 @@
 
+
 import { blobToBase64 } from './imageUtils';
 import { AiSettings } from '../types';
 
@@ -30,8 +31,14 @@ export const transcribeImage = async (
   
   // blobToBase64 returns raw base64 string (without data: prefix)
   const rawBase64 = await blobToBase64(imageBlob);
+  
+  // FIX: Ensure correct image mime type. Backend might return octet-stream, which causes AI APIs to reject the Data URI.
+  let mimeType = imageBlob.type;
+  if (!mimeType || mimeType === 'application/octet-stream') {
+      mimeType = 'image/jpeg'; // Default fallback
+  }
+
   // Construct standard Data URI for the API
-  const mimeType = imageBlob.type || 'image/jpeg';
   const dataUri = `data:${mimeType};base64,${rawBase64}`;
 
   // Optimized System Prompt for various model sizes (including local/smaller models)

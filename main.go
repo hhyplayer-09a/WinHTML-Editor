@@ -1,3 +1,5 @@
+
+
 package main
 
 import (
@@ -569,6 +571,14 @@ func main() {
 					mimeType = "application/pdf"
 				} else if ext == ".docx" {
 					mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+				} else if ext == ".png" {
+					mimeType = "image/png"
+				} else if ext == ".jpg" || ext == ".jpeg" {
+					mimeType = "image/jpeg"
+				} else if ext == ".webp" {
+					mimeType = "image/webp"
+				} else if ext == ".bmp" {
+					mimeType = "image/bmp"
 				}
 
 				w.Header().Set("Content-Type", mimeType)
